@@ -1,0 +1,5 @@
+# 忽略临时文件和上传目录
+.uploads/
+*.idsig
+*.unsigned.apk
+/data/user/work/
