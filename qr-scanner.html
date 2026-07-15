@@ -1,0 +1,743 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <title>QR 扫码合成工具</title>
+  <meta name="theme-color" content="#0b0c0f" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="QR合成" />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="apple-touch-icon" href="icon.svg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700&family=Sometype+Mono:wght@500;700&display=swap" rel="stylesheet" />
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js" crossorigin="anonymous"></script>
+  <style>
+    :root {
+      --bg: #0b0c0f;
+      --panel: #14161b;
+      --panel-2: #1c1f26;
+      --text: #f2f4f8;
+      --muted: #9aa0a8;
+      --accent: #c8ff2e;
+      --accent-dim: #9dcc1f;
+      --danger: #ff5a5a;
+      --ok: #2ee6a8;
+      --radius: 20px;
+      --shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+    }
+
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+    html, body {
+      margin: 0; padding: 0;
+      width: 100%; height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Sora', system-ui, -apple-system, sans-serif;
+      overflow: hidden;
+      overscroll-behavior: none;
+    }
+
+    #app {
+      position: relative;
+      width: 100%; height: 100%;
+      display: flex; flex-direction: column;
+    }
+
+    /* ---------- HOME ---------- */
+    #home {
+      flex: 1;
+      display: flex; flex-direction: column;
+      justify-content: center; align-items: center;
+      padding: calc(28px + env(safe-area-inset-top)) 28px calc(28px + env(safe-area-inset-bottom));
+      text-align: center;
+      gap: 18px;
+    }
+
+    .brand {
+      display: inline-flex; align-items: center; gap: 10px;
+      padding: 8px 16px;
+      border-radius: 999px;
+      background: var(--panel);
+      border: 1px solid rgba(255,255,255,0.06);
+      font-family: 'Sometype Mono', monospace;
+      font-size: 12px; color: var(--accent);
+      letter-spacing: 0.08em;
+    }
+
+    h1 {
+      margin: 10px 0 0;
+      font-size: 32px; font-weight: 700; line-height: 1.15;
+      letter-spacing: -0.03em;
+    }
+
+    .subtitle {
+      color: var(--muted); font-size: 15px; line-height: 1.5;
+      max-width: 340px;
+    }
+
+    .big-btn {
+      appearance: none; border: none;
+      background: var(--accent); color: #0b0c0f;
+      font-family: 'Sora', sans-serif; font-weight: 700; font-size: 17px;
+      padding: 18px 36px; border-radius: 999px;
+      box-shadow: 0 10px 40px rgba(200,255,46,0.22);
+      cursor: pointer;
+      transform: translateY(0);
+      transition: transform .12s ease, box-shadow .2s ease;
+    }
+    .big-btn:active { transform: translateY(2px) scale(0.98); }
+
+    .home-status {
+      margin-top: 12px;
+      padding: 16px 20px;
+      background: var(--panel);
+      border-radius: var(--radius);
+      min-width: 280px;
+      border: 1px solid rgba(255,255,255,0.06);
+    }
+    .home-status .num {
+      font-family: 'Sometype Mono', monospace;
+      font-size: 26px; font-weight: 700; color: var(--accent);
+    }
+    .home-status .label { font-size: 13px; color: var(--muted); margin-top: 4px; }
+
+    /* ---------- SCANNER ---------- */
+    #scanner {
+      position: absolute; inset: 0;
+      display: none; flex-direction: column;
+      background: #000;
+      z-index: 10;
+    }
+
+    #reader {
+      position: absolute; inset: 0;
+      width: 100%; height: 100%;
+      object-fit: cover;
+    }
+    #reader video {
+      object-fit: contain !important;
+      width: 100% !important; height: 100% !important;
+      background: #000;
+    }
+
+    /* overlay + reticle */
+    .overlay {
+      position: absolute; inset: 0;
+      pointer-events: none;
+      display: flex; flex-direction: column;
+      padding: env(safe-area-inset-top) 16px env(safe-area-inset-bottom);
+    }
+
+    .topbar {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 14px 6px 10px;
+      gap: 10px;
+      background: linear-gradient(to bottom, rgba(0,0,0,0.75), transparent);
+    }
+
+    .pill {
+      background: rgba(20,22,27,0.92);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 999px;
+      padding: 8px 14px;
+      font-family: 'Sometype Mono', monospace;
+      font-size: 13px; font-weight: 700;
+      backdrop-filter: blur(8px);
+      white-space: nowrap;
+    }
+    .pill .remain { color: var(--accent); }
+    .pill .total { color: var(--muted); font-weight: 500; }
+
+    .missing-toggle {
+      appearance: none; border: none;
+      background: rgba(20,22,27,0.92);
+      border: 1px solid rgba(255,255,255,0.08);
+      color: var(--text);
+      border-radius: 999px;
+      padding: 8px 14px;
+      font-size: 13px; font-weight: 600;
+      backdrop-filter: blur(8px);
+      cursor: pointer;
+      pointer-events: auto;
+    }
+
+    .reticle-wrap {
+      flex: 1;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .reticle {
+      width: 260px; height: 260px;
+      border: 2px solid rgba(255,255,255,0.35);
+      border-radius: 28px;
+      position: relative;
+      box-shadow: 0 0 0 9999px rgba(0,0,0,0.42);
+    }
+    .reticle::before, .reticle::after {
+      content: ''; position: absolute; width: 34px; height: 34px;
+      border-color: var(--accent); border-style: solid;
+    }
+    .reticle::before { top: -2px; left: -2px; border-width: 4px 0 0 4px; border-radius: 24px 0 0 0; }
+    .reticle::after { bottom: -2px; right: -2px; border-width: 0 4px 4px 0; border-radius: 0 0 24px 0; }
+
+    .scan-toast {
+      position: absolute; bottom: 110px; left: 50%; transform: translateX(-50%);
+      background: rgba(20,22,27,0.95);
+      border: 1px solid rgba(255,255,255,0.08);
+      color: var(--text);
+      padding: 10px 18px; border-radius: 999px;
+      font-size: 14px; font-weight: 600;
+      opacity: 0; transition: opacity .2s ease;
+      pointer-events: none;
+    }
+    .scan-toast.show { opacity: 1; }
+
+    .scanner-controls {
+      position: absolute; bottom: 0; left: 0; right: 0;
+      padding: 16px 24px calc(16px + env(safe-area-inset-bottom));
+      display: flex; justify-content: center; gap: 16px;
+      background: linear-gradient(to top, rgba(0,0,0,0.85), transparent);
+    }
+
+    .ctrl-btn {
+      appearance: none; border: none;
+      background: rgba(255,255,255,0.12); color: #fff;
+      font-family: 'Sora', sans-serif; font-size: 14px; font-weight: 600;
+      padding: 12px 22px; border-radius: 999px;
+      backdrop-filter: blur(6px);
+      cursor: pointer;
+      border: 1px solid rgba(255,255,255,0.1);
+    }
+    .ctrl-btn.primary { background: var(--accent); color: #0b0c0f; border-color: var(--accent); }
+
+    /* ---------- MISSING PANEL ---------- */
+    #missingPanel {
+      position: absolute; top: calc(66px + env(safe-area-inset-top)); right: 12px;
+      width: min(320px, calc(100vw - 24px));
+      max-height: 60vh;
+      background: rgba(20,22,27,0.96);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 18px;
+      padding: 14px;
+      display: none; flex-direction: column;
+      backdrop-filter: blur(14px);
+      z-index: 20;
+      box-shadow: var(--shadow);
+    }
+    #missingPanel.open { display: flex; }
+    #missingPanel .head {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 10px;
+    }
+    #missingPanel .head span { font-size: 13px; color: var(--muted); }
+    #missingPanel .head strong { color: var(--text); font-size: 14px; }
+    #missingGrid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(46px, 1fr));
+      gap: 6px;
+      overflow-y: auto;
+      padding-right: 4px;
+    }
+    .missing-chip {
+      background: var(--panel-2);
+      border-radius: 8px;
+      padding: 6px 4px;
+      text-align: center;
+      font-family: 'Sometype Mono', monospace;
+      font-size: 11px; color: var(--text);
+      border: 1px solid rgba(255,255,255,0.05);
+    }
+
+    /* ---------- RESULT ---------- */
+    #result {
+      position: absolute; inset: 0;
+      display: none; flex-direction: column;
+      justify-content: center; align-items: center;
+      padding: calc(28px + env(safe-area-inset-top)) 28px calc(28px + env(safe-area-inset-bottom));
+      background: var(--bg);
+      z-index: 30;
+      text-align: center;
+    }
+    #result .icon { font-size: 56px; margin-bottom: 10px; }
+    #result h2 { margin: 0 0 8px; font-size: 26px; }
+    #result p { color: var(--muted); margin: 0 0 24px; font-size: 14px; }
+    #downloadLink {
+      display: inline-flex; align-items: center; gap: 8px;
+      background: var(--accent); color: #0b0c0f;
+      text-decoration: none;
+      padding: 16px 30px; border-radius: 999px;
+      font-weight: 700; font-size: 16px;
+      box-shadow: 0 10px 40px rgba(200,255,46,0.22);
+    }
+    .result-actions { display: flex; gap: 12px; margin-top: 22px; }
+
+    .hint {
+      margin-top: 18px; font-size: 12px; color: var(--muted); max-width: 320px; line-height: 1.5;
+    }
+
+    .install-box {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 14px;
+      background: var(--panel); border: 1px solid rgba(255,255,255,0.08);
+      border-radius: var(--radius);
+      padding: 14px 16px;
+      min-width: 280px;
+      text-align: left;
+    }
+    .install-box div { display: flex; flex-direction: column; gap: 2px; }
+    .install-box strong { font-size: 14px; }
+    .install-box span { font-size: 12px; color: var(--muted); }
+    .install-btn {
+      appearance: none; border: none;
+      background: var(--accent); color: #0b0c0f;
+      font-family: 'Sora', sans-serif; font-weight: 700; font-size: 13px;
+      padding: 8px 16px; border-radius: 999px;
+      cursor: pointer;
+    }
+
+    @media (max-width: 360px) {
+      h1 { font-size: 26px; }
+      .reticle { width: 220px; height: 220px; }
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <!-- 主页 -->
+    <section id="home">
+      <div class="brand">QR RECONSTRUCT</div>
+      <h1>二维码合成工具</h1>
+      <p class="subtitle">扫描由 Word 宏生成的 QR 码序列，把 base64 分片还原成原始压缩包。</p>
+
+      <div class="home-status" id="homeStatus">
+        <div class="num" id="homeNum">0 / 0</div>
+        <div class="label" id="homeLabel">尚未开始扫描</div>
+      </div>
+
+      <button class="big-btn" id="startBtn">开始扫描</button>
+      <button class="ctrl-btn" id="resetBtn" style="margin-top:8px; display:none;">清空进度</button>
+
+      <div class="install-box" id="installBox" style="display:none;">
+        <div>
+          <strong>添加到主屏幕</strong>
+          <span>可像原生 App 一样全屏打开</span>
+        </div>
+        <button class="install-btn" id="installBtn">安装</button>
+      </div>
+      <p class="hint" id="iosHint" style="display:none;">iPhone：点击 Safari 底部“分享”按钮，选择“添加到主屏幕”。</p>
+
+      <p class="hint">将 1000 张 QR 码依次扫入，扫完第一张后会自动识别总张数。右上角可查看“未扫列表”。</p>
+    </section>
+
+    <!-- 扫描页 -->
+    <section id="scanner">
+      <div id="reader"></div>
+      <div class="overlay">
+        <div class="topbar">
+          <div class="pill" id="statusPill"><span class="remain">0</span> <span class="total">/ 0</span></div>
+          <button class="missing-toggle" id="missingToggle">未扫 ▼</button>
+        </div>
+        <div class="reticle-wrap"><div class="reticle"></div></div>
+        <div class="scan-toast" id="toast"></div>
+        <div class="scanner-controls">
+          <button class="ctrl-btn" id="stopBtn">返回主页</button>
+          <button class="ctrl-btn" id="switchCamBtn" style="display:none;">切换镜头</button>
+          <button class="ctrl-btn primary" id="finishBtn" disabled>合成文件</button>
+        </div>
+      </div>
+
+      <div id="missingPanel">
+        <div class="head"><strong>未扫列表</strong><span id="missingCount">0 张</span></div>
+        <div id="missingGrid"></div>
+      </div>
+    </section>
+
+    <!-- 完成页 -->
+    <section id="result">
+      <div class="icon">🎉</div>
+      <h2>全部扫描完成</h2>
+      <p id="resultText">已收集全部分片，点击下方按钮下载还原后的压缩包。</p>
+      <a id="downloadLink" href="#" download="reconstructed.zip">下载文件</a>
+      <div class="result-actions">
+        <button class="ctrl-btn" id="backHomeBtn">返回主页</button>
+        <button class="ctrl-btn primary" id="scanAgainBtn">继续扫描</button>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    // ---------- state ----------
+    const CHUNK_PREFIX = 'TZ|';
+    const state = {
+      total: 0,
+      chunks: new Map(),     // index -> data
+      lastCode: null,
+      lastAt: 0,
+      scanning: false,
+      cameras: [],
+      cameraIndex: 0
+    };
+
+    // ---------- elements ----------
+    const el = {
+      home: document.getElementById('home'),
+      scanner: document.getElementById('scanner'),
+      result: document.getElementById('result'),
+      reader: document.getElementById('reader'),
+      startBtn: document.getElementById('startBtn'),
+      stopBtn: document.getElementById('stopBtn'),
+      finishBtn: document.getElementById('finishBtn'),
+      resetBtn: document.getElementById('resetBtn'),
+      switchCamBtn: document.getElementById('switchCamBtn'),
+      homeNum: document.getElementById('homeNum'),
+      homeLabel: document.getElementById('homeLabel'),
+      statusPill: document.getElementById('statusPill'),
+      missingToggle: document.getElementById('missingToggle'),
+      missingPanel: document.getElementById('missingPanel'),
+      missingCount: document.getElementById('missingCount'),
+      missingGrid: document.getElementById('missingGrid'),
+      toast: document.getElementById('toast'),
+      downloadLink: document.getElementById('downloadLink'),
+      resultText: document.getElementById('resultText'),
+      backHomeBtn: document.getElementById('backHomeBtn'),
+      scanAgainBtn: document.getElementById('scanAgainBtn'),
+      installBox: document.getElementById('installBox'),
+      installBtn: document.getElementById('installBtn'),
+      iosHint: document.getElementById('iosHint')
+    };
+
+    let scannerObj = null;
+
+    // ---------- helpers ----------
+    function showToast(msg) {
+      el.toast.textContent = msg;
+      el.toast.classList.add('show');
+      setTimeout(() => el.toast.classList.remove('show'), 1400);
+    }
+
+    function updateUI() {
+      const got = state.chunks.size;
+      const total = state.total || 0;
+      const remain = Math.max(0, total - got);
+
+      el.homeNum.textContent = total ? `${got} / ${total}` : '0 / 0';
+      el.homeLabel.textContent = total
+        ? `已扫描 ${got} 张，还剩 ${remain} 张`
+        : '尚未开始扫描，请先扫任意一张带“TZ|”前缀的 QR 码';
+
+      el.statusPill.innerHTML = `<span class="remain">${got}</span> <span class="total">/ ${total || '?'}</span>`;
+      el.missingToggle.textContent = `未扫 ▼ ${remain}`;
+      el.resetBtn.style.display = got > 0 ? 'inline-block' : 'none';
+
+      // 右下角按钮：扫完显示“合成文件”，否则显示“退出扫描”，始终可点
+      if (remain === 0 && total > 0) {
+        el.finishBtn.textContent = '合成文件';
+        el.finishBtn.classList.add('primary');
+      } else {
+        el.finishBtn.textContent = '退出扫描';
+        el.finishBtn.classList.remove('primary');
+      }
+      el.finishBtn.disabled = false;
+
+      renderMissing();
+    }
+
+    function renderMissing() {
+      const total = state.total;
+      if (!total) {
+        el.missingPanel.classList.remove('open');
+        el.missingGrid.innerHTML = '';
+        el.missingCount.textContent = '0 张';
+        return;
+      }
+      const missing = [];
+      for (let i = 1; i <= total; i++) {
+        if (!state.chunks.has(i)) missing.push(i);
+      }
+      el.missingCount.textContent = `${missing.length} 张`;
+      el.missingGrid.innerHTML = missing.length
+        ? missing.map(i => `<div class="missing-chip">${i}</div>`).join('')
+        : '<div style="grid-column:1/-1;color:var(--muted);font-size:12px;">已全部扫完</div>';
+    }
+
+    function parseChunk(text) {
+      if (!text || !text.startsWith(CHUNK_PREFIX)) return null;
+      const parts = text.split('|');
+      if (parts.length < 4) return null;
+      const idx = parseInt(parts[1], 10);
+      const total = parseInt(parts[2], 10);
+      const data = parts.slice(3).join('|');
+      if (!Number.isFinite(idx) || idx < 1 || !Number.isFinite(total) || total < 1) return null;
+      return { idx, total, data };
+    }
+
+    function base64ToBytes(b64) {
+      const bin = atob(b64);
+      const len = bin.length;
+      const bytes = new Uint8Array(len);
+      for (let i = 0; i < len; i++) bytes[i] = bin.charCodeAt(i);
+      return bytes;
+    }
+
+    function buildFile() {
+      if (!state.total) return null;
+      const parts = [];
+      for (let i = 1; i <= state.total; i++) {
+        const d = state.chunks.get(i);
+        if (!d) return null;
+        parts.push(d);
+      }
+      const fullBase64 = parts.join('');
+      try {
+        return base64ToBytes(fullBase64);
+      } catch (e) {
+        alert('base64 解码失败：' + e.message);
+        return null;
+      }
+    }
+
+    function triggerVibrate() {
+      if (navigator.vibrate) navigator.vibrate(40);
+    }
+
+    // ---------- scan handling ----------
+    function onScanSuccess(decodedText) {
+      const now = Date.now();
+      // 防止同一码连续识别
+      if (decodedText === state.lastCode && now - state.lastAt < 1200) return;
+
+      const chunk = parseChunk(decodedText);
+      if (!chunk) {
+        showToast('不是有效的 TZ 分片二维码');
+        return;
+      }
+
+      // 第一次识别到合法码时设置总数
+      if (!state.total) {
+        state.total = chunk.total;
+      }
+
+      if (chunk.total !== state.total) {
+        showToast('总张数不一致，请扫同一批次');
+        return;
+      }
+
+      const isNew = !state.chunks.has(chunk.idx);
+      state.chunks.set(chunk.idx, chunk.data);
+      state.lastCode = decodedText;
+      state.lastAt = now;
+
+      triggerVibrate();
+      showToast(isNew ? `已记录第 ${chunk.idx} 张` : `第 ${chunk.idx} 张已更新`);
+      updateUI();
+
+      const remain = state.total - state.chunks.size;
+      if (remain === 0) {
+        setTimeout(finishScanning, 600);
+      }
+    }
+
+    function onScanFailure(error) {
+      // html5-qrcode 会持续调用，无需处理
+    }
+
+    // ---------- camera ----------
+    function isBackCamera(label) {
+      return /back|rear|后置|后面/i.test(label);
+    }
+
+    function isTelephoto(label) {
+      return /tele|telephoto|长焦|zoom/i.test(label);
+    }
+
+    function isMainBackCamera(label) {
+      // 优先选择普通广角后置，避开长焦、微距、超广角
+      const lower = label.toLowerCase();
+      if (!isBackCamera(label)) return false;
+      if (/macro|ultra|tele|zoom|dual/i.test(lower)) return false;
+      return /wide|广角/.test(label) || true;
+    }
+
+    async function enumerateCameras() {
+      try {
+        const devices = await Html5Qrcode.getCameras();
+        let backs = devices.filter(d => isBackCamera(d.label));
+        if (backs.length === 0) backs = devices;
+        // 优先主摄：非长焦、非微距的后置镜头
+        const mains = backs.filter(d => isMainBackCamera(d.label));
+        state.cameras = mains.length > 0 ? mains : backs;
+      } catch (e) {
+        state.cameras = [];
+      }
+    }
+
+    function getCameraConfig(cameraId) {
+      // 使用 1920x1080 高分辨率，强制不缩放，连续对焦
+      const videoConstraints = {
+        width: { ideal: 1920 },
+        height: { ideal: 1080 },
+        advanced: [{ zoom: 1, focusMode: 'continuous' }]
+      };
+      if (!cameraId) {
+        videoConstraints.facingMode = { exact: 'environment' };
+      }
+      return {
+        fps: 12,
+        qrbox: { width: 280, height: 280 },
+        aspectRatio: 1.7777778,
+        videoConstraints,
+        experimentalFeatures: { useBarCodeDetectorIfSupported: true }
+      };
+    }
+
+    async function startCameraWith(cameraId) {
+      scannerObj = new Html5Qrcode('reader');
+      const cameraConfig = cameraId || { facingMode: 'environment' };
+      await scannerObj.start(
+        cameraConfig,
+        getCameraConfig(cameraId),
+        onScanSuccess,
+        onScanFailure
+      );
+    }
+
+    async function startCamera() {
+      if (state.scanning) return;
+      state.scanning = true;
+      el.home.style.display = 'none';
+      el.result.style.display = 'none';
+      el.scanner.style.display = 'flex';
+
+      try {
+        await enumerateCameras();
+        state.cameraIndex = 0;
+        const cameraId = state.cameras.length ? state.cameras[0].id : null;
+        await startCameraWith(cameraId);
+        el.switchCamBtn.style.display = state.cameras.length > 1 ? 'inline-block' : 'none';
+      } catch (err) {
+        alert('摄像头启动失败：' + err.message);
+        stopCamera();
+      }
+    }
+
+    async function switchCamera() {
+      if (!scannerObj || state.cameras.length < 2) return;
+      try {
+        await scannerObj.stop();
+      } catch (e) {}
+      try {
+        await scannerObj.clear();
+      } catch (e) {}
+      state.cameraIndex = (state.cameraIndex + 1) % state.cameras.length;
+      const cameraId = state.cameras[state.cameraIndex].id;
+      await startCameraWith(cameraId);
+      showToast(`已切换到镜头 ${state.cameraIndex + 1}/${state.cameras.length}`);
+    }
+
+    async function stopCamera() {
+      state.scanning = false;
+      if (scannerObj) {
+        try { await scannerObj.stop(); } catch (e) {}
+        try { await scannerObj.clear(); } catch (e) {}
+        scannerObj = null;
+      }
+      el.switchCamBtn.style.display = 'none';
+      el.scanner.style.display = 'none';
+      el.home.style.display = 'flex';
+      updateUI();
+    }
+
+    // ---------- result / download ----------
+    function finishScanning() {
+      if (!state.total || state.chunks.size < state.total) return;
+      const bytes = buildFile();
+      if (!bytes) return;
+
+      const blob = new Blob([bytes], { type: 'application/zip' });
+      const url = URL.createObjectURL(blob);
+      el.downloadLink.href = url;
+      el.downloadLink.download = 'reconstructed.zip';
+      el.resultText.textContent = `共 ${state.total} 张，已还原 ${(bytes.length / 1024).toFixed(1)} KB 的压缩包。`;
+
+      stopCamera();
+      el.home.style.display = 'none';
+      el.result.style.display = 'flex';
+    }
+
+    function resetAll() {
+      if (!confirm('确定清空当前进度？已扫记录会丢失。')) return;
+      state.total = 0;
+      state.chunks.clear();
+      state.lastCode = null;
+      state.lastAt = 0;
+      updateUI();
+    }
+
+    // ---------- events ----------
+    el.startBtn.addEventListener('click', startCamera);
+    el.stopBtn.addEventListener('click', stopCamera);
+    el.finishBtn.addEventListener('click', () => {
+      if (state.total && state.chunks.size >= state.total) {
+        finishScanning();
+      } else {
+        stopCamera();
+      }
+    });
+    el.resetBtn.addEventListener('click', resetAll);
+    el.switchCamBtn.addEventListener('click', switchCamera);
+
+    el.missingToggle.addEventListener('click', (e) => {
+      e.stopPropagation();
+      el.missingPanel.classList.toggle('open');
+    });
+    document.addEventListener('click', () => el.missingPanel.classList.remove('open'));
+    el.missingPanel.addEventListener('click', (e) => e.stopPropagation());
+
+    el.backHomeBtn.addEventListener('click', () => {
+      el.result.style.display = 'none';
+      el.home.style.display = 'flex';
+      updateUI();
+    });
+    el.scanAgainBtn.addEventListener('click', () => {
+      el.result.style.display = 'none';
+      startCamera();
+    });
+
+    // ---------- PWA ----------
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('sw.js', { scope: './' })
+        .then(() => console.log('Service Worker registered'))
+        .catch((err) => console.error('SW registration failed', err));
+    }
+
+    let deferredPrompt = null;
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      deferredPrompt = e;
+      el.installBox.style.display = 'flex';
+    });
+
+    el.installBtn.addEventListener('click', async () => {
+      if (!deferredPrompt) return;
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      if (outcome === 'accepted') {
+        el.installBox.style.display = 'none';
+      }
+      deferredPrompt = null;
+    });
+
+    if (isIOS && !window.navigator.standalone) {
+      el.iosHint.style.display = 'block';
+    }
+
+    // init
+    updateUI();
+  </script>
+</body>
+</html>
